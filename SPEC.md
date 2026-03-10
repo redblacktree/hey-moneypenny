@@ -1,7 +1,7 @@
 # hey-moneypenny — Voice Assistant for OpenClaw
 
 ## Overview
-A macOS voice assistant that runs on a Mac mini, listens for the wake word "Hey Moneypenny," transcribes speech, routes it through OpenClaw, and speaks the response back through the speaker.
+A macOS voice assistant that runs on a Mac mini, listens for multiple wake words and routes speech to the corresponding OpenClaw agent. For example, "Hey Moneypenny" routes to Moneypenny and "Hey Sheila" routes to Sheila. Each agent gets its own voice channel/session.
 
 ## Hardware Requirements
 - Mac mini (Apple Silicon) — always-on
@@ -38,13 +38,15 @@ A macOS voice assistant that runs on a Mac mini, listens for the wake word "Hey 
 
 ## Components
 
-### 1. Wake Word Detection
+### 1. Wake Word Detection (Multi-Agent)
 - **Primary option**: [Porcupine by Picovoice](https://picovoice.ai/platform/porcupine/) — supports custom wake words, low CPU, runs locally
   - Free tier: 3 custom wake words, unlimited on-device
-  - Train "Hey Moneypenny" via their console
+  - Train multiple wake words: "Hey Moneypenny", "Hey Sheila", etc.
+  - Porcupine supports **simultaneous multi-keyword detection** — listens for all wake words at once and returns which one triggered
   - Python SDK or Swift SDK available
 - **Fallback option**: Whisper-based VAD + keyword spotting (higher CPU, more flexible)
 - **Requirements**: <5% CPU idle, <500ms detection latency
+- **Routing**: Each wake word maps to a specific OpenClaw agent/session (see config below)
 
 ### 2. Audio Capture
 - Capture audio from USB mic via system default input device
@@ -111,10 +113,32 @@ A macOS voice assistant that runs on a Mac mini, listens for the wake word "Hey 
 
 ```yaml
 # hey-moneypenny.yaml
+
+# Multi-agent wake word configuration
+agents:
+  moneypenny:
+    wake_word:
+      keyword_path: ./models/hey-moneypenny.ppn
+      sensitivity: 0.5
+    openclaw:
+      gateway_url: ws://127.0.0.1:18789
+      session: voice-moneypenny  # dedicated session for this agent
+    tts:
+      engine: openai
+      voice: nova
+  sheila:
+    wake_word:
+      keyword_path: ./models/hey-sheila.ppn
+      sensitivity: 0.5
+    openclaw:
+      gateway_url: ws://127.0.0.1:18789
+      session: voice-sheila
+    tts:
+      engine: openai
+      voice: shimmer  # different voice per agent
+
 wake_word:
   engine: porcupine  # or "whisper"
-  sensitivity: 0.5   # 0.0 (fewer false positives) to 1.0 (more sensitive)
-  model_path: ./models/hey-moneypenny.ppn
 
 audio:
   input_device: null  # null = system default
@@ -128,13 +152,14 @@ stt:
   language: en
 
 tts:
-  engine: openai  # or "say" or "elevenlabs"
-  voice: nova     # openai: alloy/echo/fable/onyx/nova/shimmer
+  # defaults (can be overridden per agent above)
+  engine: openai
+  voice: nova
   speed: 1.0
 
 openclaw:
+  # defaults (can be overridden per agent above)
   gateway_url: ws://127.0.0.1:18789
-  channel: voice  # dedicated channel for voice interactions
 
 ui:
   menu_bar: true
@@ -146,15 +171,16 @@ ui:
 ## User Flow
 
 1. Mac mini is always on, `hey-moneypenny` runs as a LaunchAgent
-2. User says **"Hey Moneypenny"**
-3. 🔔 Short chime plays (confirms wake word detected)
-4. System captures speech until 1.5s silence
-5. Audio sent to Whisper for transcription
-6. Transcribed text sent to OpenClaw gateway
-7. OpenClaw processes, returns response text
-8. Response converted to speech via TTS
-9. Audio plays through Mac mini speaker
-10. Return to step 1 (listening for wake word)
+2. User says a wake word — **"Hey Moneypenny"** or **"Hey Sheila"**
+3. Porcupine identifies **which** wake word triggered
+4. 🔔 Short chime plays (confirms wake word detected)
+5. System captures speech until 1.5s silence
+6. Audio sent to Whisper for transcription
+7. Transcribed text routed to the **correct agent's** OpenClaw session
+8. OpenClaw processes, returns response text
+9. Response converted to speech via the **agent's configured TTS voice**
+10. Audio plays through Mac mini speaker
+11. Return to step 1 (listening for all wake words)
 
 ## Error Handling
 - Network down → fall back to local Whisper + macOS `say`
