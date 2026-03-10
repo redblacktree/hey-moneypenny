@@ -39,14 +39,21 @@ A macOS voice assistant that runs on a Mac mini, listens for multiple wake words
 ## Components
 
 ### 1. Wake Word Detection (Multi-Agent)
-- **Primary option**: [Porcupine by Picovoice](https://picovoice.ai/platform/porcupine/) — supports custom wake words, low CPU, runs locally
-  - Free tier: 3 custom wake words, unlimited on-device
-  - Train multiple wake words: "Hey Moneypenny", "Hey Sheila", etc.
-  - Porcupine supports **simultaneous multi-keyword detection** — listens for all wake words at once and returns which one triggered
-  - Python SDK or Swift SDK available
-- **Fallback option**: Whisper-based VAD + keyword spotting (higher CPU, more flexible)
+- **Engine**: [openWakeWord](https://github.com/dscripka/openWakeWord) — fully open-source, no vendor dependency, no API key required
+  - Train custom wake words locally using synthetic speech (TTS) + noise augmentation
+  - No limit on number of wake words — add new agents anytime
+  - Supports simultaneous multi-model detection — load multiple `.tflite`/`.onnx` models and predict on each frame
+  - Built-in Silero VAD integration for reducing false positives
+  - Runs efficiently on Apple Silicon (~15-20 models simultaneously on a Raspberry Pi 3 single core)
+  - Python library: `pip install openwakeword`
+  - Training: use the included Colab notebook or local training script to generate models from synthetic speech samples
+- **Training workflow for new wake words**:
+  1. Generate synthetic speech samples of the phrase using TTS (e.g., OpenAI TTS, various voices/speeds)
+  2. Augment with background noise, room impulse responses
+  3. Train a small neural net model (~1 hour on Colab or local)
+  4. Export `.onnx` model, add to config
 - **Requirements**: <5% CPU idle, <500ms detection latency
-- **Routing**: Each wake word maps to a specific OpenClaw agent/session (see config below)
+- **Routing**: Each wake word model maps to a specific OpenClaw agent/session (see config below)
 
 ### 2. Audio Capture
 - Capture audio from USB mic via system default input device
@@ -95,7 +102,7 @@ A macOS voice assistant that runs on a Mac mini, listens for multiple wake words
 
 ### Recommended: Python
 - **Why**: Fastest to build, best library ecosystem for audio/ML
-  - `pvporcupine` — wake word
+  - `openwakeword` — wake word detection (open-source, locally trained)
   - `sounddevice` — audio capture
   - `openai` — Whisper + TTS APIs
   - `websocket-client` or `httpx` — OpenClaw gateway
@@ -118,7 +125,7 @@ A macOS voice assistant that runs on a Mac mini, listens for multiple wake words
 agents:
   moneypenny:
     wake_word:
-      keyword_path: ./models/hey-moneypenny.ppn
+      model_path: ./models/hey_moneypenny.onnx
       sensitivity: 0.5
     openclaw:
       gateway_url: ws://127.0.0.1:18789
@@ -128,7 +135,7 @@ agents:
       voice: nova
   sheila:
     wake_word:
-      keyword_path: ./models/hey-sheila.ppn
+      model_path: ./models/hey_sheila.onnx
       sensitivity: 0.5
     openclaw:
       gateway_url: ws://127.0.0.1:18789
@@ -138,7 +145,8 @@ agents:
       voice: shimmer  # different voice per agent
 
 wake_word:
-  engine: porcupine  # or "whisper"
+  engine: openwakeword
+  vad_threshold: 0.5  # Silero VAD filter (0-1, reduces false positives)
 
 audio:
   input_device: null  # null = system default
@@ -172,7 +180,7 @@ ui:
 
 1. Mac mini is always on, `hey-moneypenny` runs as a LaunchAgent
 2. User says a wake word — **"Hey Moneypenny"** or **"Hey Sheila"**
-3. Porcupine identifies **which** wake word triggered
+3. openWakeWord identifies **which** wake word triggered
 4. 🔔 Short chime plays (confirms wake word detected)
 5. System captures speech until 1.5s silence
 6. Audio sent to Whisper for transcription
@@ -192,7 +200,7 @@ ui:
 - All processing is local-first (wake word detection never leaves device)
 - Audio is never stored permanently — transcribe and discard
 - OpenClaw gateway is localhost only
-- No cloud wake word processing (Porcupine runs on-device)
+- No cloud wake word processing (openWakeWord runs entirely on-device)
 
 ## Deployment
 - Install as macOS LaunchAgent (`~/Library/LaunchAgents/ai.openclaw.hey-moneypenny.plist`)
@@ -202,6 +210,6 @@ ui:
 
 ## Open Questions
 - [ ] Does OpenClaw have a voice/audio channel API, or do we need to use an existing channel (e.g., a virtual "voice" session)?
-- [ ] Porcupine free tier limits — do we need a paid plan for custom wake words?
+- [ ] openWakeWord model training — validate quality of locally-trained models for "Hey Moneypenny" and "Hey Sheila"
 - [ ] Should responses also be sent as iMessage/Telegram in addition to spoken? (probably yes, for history)
 - [ ] Barge-in support — can user interrupt a long spoken response? (V2)
