@@ -1,5 +1,6 @@
 ---
-description: Create git commits without Claude attribution
+name: ff_commit
+description: Create git commits without agent attribution
 ---
 
 # Commit Changes
@@ -31,9 +32,9 @@ You are tasked with creating git commits for the changes made during this sessio
 
 ## Important:
 - **NEVER commit Fastflow runtime artifacts under `thoughts/`**. If they appear in `git status`, leave them untracked/ignored and mention that they were intentionally excluded.
-- **NEVER add co-author information or Claude attribution**
+- **NEVER add co-author information or agent attribution**
 - Commits should be authored solely by the user
-- Do not include any "Generated with Claude" messages
+- Do not include any "Generated with AI" messages
 - Do not add "Co-Authored-By" lines
 - Write commit messages as if the user wrote them
 
